@@ -19,9 +19,9 @@ PAGE = """\
 </html>
 """
 
-class StreamingOutput(object):
+class StreamingOutput(io.BytesIO):
     def __init__(self):
-        self.buffer = io.BytesIO()
+        super().__init__()
         self.frame = None
         self.condition = Condition()
 
@@ -29,17 +29,13 @@ class StreamingOutput(object):
         if buf.startswith(b'\xff\xd8'):
             # New frame, copy the existing buffer's content and notify all
             # clients it's available
-            self.buffer.seek(0)
-            self.frame = self.buffer.read()
+            self.seek(0)
+            self.frame = self.read()
             with self.condition:
                 self.condition.notify_all()
-            self.buffer.seek(0)
-            self.buffer.truncate()
-        return self.buffer.write(buf)
-
-    def flush(self):
-        self.buffer.seek(0)
-        self.buffer.truncate()
+            self.seek(0)
+            self.truncate()
+        return super().write(buf)
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -88,15 +84,34 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
 picam2 = Picamera2()
 camera_config = picam2.create_video_configuration(main={"size": (640, 480)})
 picam2.configure(camera_config)
+
+# Menggunakan io.BytesIO sebagai output
+buffer = io.BytesIO()
 output = StreamingOutput()
 
 # Setup Encoder dan Output
 encoder = MJPEGEncoder()
-picam2.start_recording(encoder, FileOutput(output))
+# Menuliskan hasil encoding ke buffer
+picam2.start_recording(encoder, FileOutput(buffer))
 
 try:
     address = ('', 8000)
     server = StreamingServer(address, StreamingHandler)
+    
+    # Baca dari buffer dan tulis ke StreamingOutput di thread terpisah
+    def buffer_to_output():
+        while True:
+            buffer.seek(0)
+            data = buffer.read()
+            if data:
+                output.write(data)
+            buffer.seek(0)
+            buffer.truncate()
+    
+    import threading
+    threading.Thread(target=buffer_to_output, daemon=True).start()
+    
+    # Mulai server streaming
     server.serve_forever()
 finally:
     picam2.stop_recording()
