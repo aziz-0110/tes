@@ -1,12 +1,29 @@
 from flask import Flask, Response
-from picamera2 import Picamera2
+from picamera2 import Picamera2, Preview
+import time
 
 app = Flask(__name__)
 camera = Picamera2()
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(camera.start_recording("output.h264", format="h264"), mimetype='video/h264')
+    # Mengatur konfigurasi video
+    camera.configure(camera.create_video_configuration())
+    camera.start()
+    
+    # Menghasilkan stream video
+    return Response(stream_video(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def stream_video():
+    while True:
+        # Ambil frame dari kamera
+        frame = camera.capture_array()
+        # Encode frame ke JPEG
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+        
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 @app.route('/')
 def index():
@@ -23,6 +40,4 @@ def index():
     '''
 
 if __name__ == '__main__':
-    camera.configure(camera.create_video_configuration())
-    camera.start()
     app.run(host='0.0.0.0', port=5000)
