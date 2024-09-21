@@ -19,8 +19,9 @@ def stream_video():
     while True:
         # Ambil frame dari kamera
         frame = camera.capture_array()
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # Encode frame ke JPEG
-        _, buffer = cv2.imencode('.jpg', frame)
+        _, buffer = cv2.imencode('.png', frame)
         frame = buffer.tobytes()
         
         yield (b'--frame\r\n'
