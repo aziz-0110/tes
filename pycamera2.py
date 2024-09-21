@@ -19,9 +19,9 @@ PAGE = """\
 </html>
 """
 
-class StreamingOutput(io.BytesIO):
+class StreamingOutput(object):
     def __init__(self):
-        super().__init__()
+        self.buffer = io.BytesIO()
         self.frame = None
         self.condition = Condition()
 
@@ -29,12 +29,17 @@ class StreamingOutput(io.BytesIO):
         if buf.startswith(b'\xff\xd8'):
             # New frame, copy the existing buffer's content and notify all
             # clients it's available
-            self.seek(0)
-            self.truncate()
-            self.frame = buf
+            self.buffer.seek(0)
+            self.frame = self.buffer.read()
             with self.condition:
                 self.condition.notify_all()
-        return super().write(buf)
+            self.buffer.seek(0)
+            self.buffer.truncate()
+        return self.buffer.write(buf)
+
+    def flush(self):
+        self.buffer.seek(0)
+        self.buffer.truncate()
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -95,3 +100,4 @@ try:
     server.serve_forever()
 finally:
     picam2.stop_recording()
+    picam2.close()
