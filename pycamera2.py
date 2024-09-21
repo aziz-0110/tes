@@ -1,5 +1,7 @@
 import io
 from picamera2 import Picamera2, Preview
+from picamera2.encoders import MJPEGEncoder
+from picamera2.outputs import FileOutput
 import logging
 import socketserver
 from threading import Condition
@@ -17,22 +19,22 @@ PAGE = """\
 </html>
 """
 
-class StreamingOutput(object):
+class StreamingOutput(io.BytesIO):
     def __init__(self):
+        super().__init__()
         self.frame = None
-        self.buffer = io.BytesIO()
         self.condition = Condition()
 
     def write(self, buf):
         if buf.startswith(b'\xff\xd8'):
             # New frame, copy the existing buffer's content and notify all
             # clients it's available
-            self.buffer.truncate()
+            self.seek(0)
+            self.truncate()
+            self.frame = buf
             with self.condition:
-                self.frame = self.buffer.getvalue()
                 self.condition.notify_all()
-            self.buffer.seek(0)
-        return self.buffer.write(buf)
+        return super().write(buf)
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -83,9 +85,9 @@ camera_config = picam2.create_video_configuration(main={"size": (640, 480)})
 picam2.configure(camera_config)
 output = StreamingOutput()
 
-# Start camera preview dan recording
-picam2.start()
-picam2.start_recording(output, 'mjpeg')
+# Setup Encoder dan Output
+encoder = MJPEGEncoder()
+picam2.start_recording(encoder, FileOutput(output))
 
 try:
     address = ('', 8000)
@@ -93,4 +95,3 @@ try:
     server.serve_forever()
 finally:
     picam2.stop_recording()
-    picam2.stop()
