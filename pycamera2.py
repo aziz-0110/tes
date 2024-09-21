@@ -1,11 +1,12 @@
 import io
-from picamera2 import Picamera2, Preview
-from picamera2.encoders import MJPEGEncoder
-from picamera2.outputs import FileOutput
+import time
 import logging
 import socketserver
-from threading import Condition
 from http import server
+from threading import Condition, Thread
+from picamera2 import Picamera2
+from picamera2.encoders import MJPEGEncoder
+from picamera2.outputs import FileOutput
 
 PAGE = """\
 <html>
@@ -27,8 +28,7 @@ class StreamingOutput(io.BytesIO):
 
     def write(self, buf):
         if buf.startswith(b'\xff\xd8'):
-            # New frame, copy the existing buffer's content and notify all
-            # clients it's available
+            # Frame baru, copy buffer yang ada dan notify semua clients bahwa frame tersedia
             self.seek(0)
             self.frame = self.read()
             with self.condition:
@@ -80,39 +80,33 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
+def start_streaming_server():
+    address = ('', 8000)
+    server = StreamingServer(address, StreamingHandler)
+    server.serve_forever()
+
 # Inisialisasi Picamera2
 picam2 = Picamera2()
 camera_config = picam2.create_video_configuration(main={"size": (640, 480)})
 picam2.configure(camera_config)
 
-# Menggunakan io.BytesIO sebagai output
-buffer = io.BytesIO()
+# Membuat encoder MJPEG dan output ke StreamingOutput
 output = StreamingOutput()
-
-# Setup Encoder dan Output
 encoder = MJPEGEncoder()
-# Menuliskan hasil encoding ke buffer
-picam2.start_recording(encoder, FileOutput(buffer))
+
+# Mulai merekam
+picam2.start_recording(encoder, FileOutput(output))
 
 try:
-    address = ('', 8000)
-    server = StreamingServer(address, StreamingHandler)
-    
-    # Baca dari buffer dan tulis ke StreamingOutput di thread terpisah
-    def buffer_to_output():
-        while True:
-            buffer.seek(0)
-            data = buffer.read()
-            if data:
-                output.write(data)
-            buffer.seek(0)
-            buffer.truncate()
-    
-    import threading
-    threading.Thread(target=buffer_to_output, daemon=True).start()
-    
-    # Mulai server streaming
-    server.serve_forever()
+    # Mulai server streaming di thread terpisah
+    server_thread = Thread(target=start_streaming_server)
+    server_thread.daemon = True
+    server_thread.start()
+
+    # Menjalankan streaming selama 10 menit atau sesuai kebutuhan
+    while True:
+        time.sleep(1)
+
 finally:
     picam2.stop_recording()
     picam2.close()
