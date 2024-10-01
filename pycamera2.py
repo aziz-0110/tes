@@ -4,6 +4,7 @@ import cv2
 import time
 import threading
 
+
 # Membuat instance Flask
 app = Flask(__name__)
 
