@@ -30,29 +30,13 @@ def camera_thread():
 
     while camera_running:
         frame = camera.capture_array()
-        # Dapat menambahkan sleep untuk mengatur kecepatan pengambilan frame
         time.sleep(0.03)  # 30 fps
 
     camera.stop()
 
-# Rute untuk menampilkan halaman utama
+# Rute untuk menampilkan streaming video tanpa HTML tambahan
 @app.route('/')
 def index():
-    return '''
-    <html>
-    <head>
-        <title>Raspberry Pi Camera Stream</title>
-    </head>
-    <body>
-        <h1>Raspberry Pi Camera Stream</h1>
-        <img src="/video_feed" width="1640" height="1230">
-    </body>
-    </html>
-    '''
-
-# Rute untuk streaming video
-@app.route('/video_feed')
-def video_feed():
     return Response(stream_video(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # Fungsi generator untuk streaming video
@@ -68,7 +52,7 @@ def stream_video():
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_jpg + b'\r\n')
         else:
-            time.sleep(0.1)  # Tunggu sebentar jika frame belum tersedia
+            time.sleep(0.1)
 
 # Menjalankan kamera pada thread terpisah
 camera_thread_instance = threading.Thread(target=camera_thread)
@@ -79,6 +63,5 @@ if __name__ == '__main__':
     try:
         app.run(host='0.0.0.0', port=5000)
     finally:
-        # Menghentikan loop kamera saat aplikasi berhenti
         camera_running = False
         camera_thread_instance.join()
